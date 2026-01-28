@@ -2,79 +2,88 @@ import React, { useState } from "react";
 
 function App() {
   const [status, setStatus] = useState("Idle");
-  const [bleData, setBleData] = useState("No Data");
+  const [rxData, setRxData] = useState("");
   const [txChar, setTxChar] = useState(null);
   const [txMsg, setTxMsg] = useState("");
+  const [deviceRef, setDeviceRef] = useState(null);
 
+  // 🔔 Beep sound using Web Audio API
+  const playBeep = () => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  };
 
   const connectBLE = async () => {
     try {
       setStatus("Scanning...");
 
-      // Step 1: Scan (NO UUID filter)
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-         // Allow access to ALL vendor & custom services
-  optionalServices: [
-    "battery_service",
-    "device_information",
-    "generic_access",
-    "generic_attribute",
-    "0000fff0-0000-1000-8000-00805f9b34fb"
-  ]
+        optionalServices: [
+          "0000fff0-0000-1000-8000-00805f9b34fb",
+          "generic_access",
+          "generic_attribute"
+        ]
+      });
+
+      setDeviceRef(device);
+
+      // 🔌 Disconnect listener
+      device.addEventListener("gattserverdisconnected", () => {
+        setStatus("❌ BLE DISCONNECTED");
+        playBeep();
+        alert("⚠ BLE Device Disconnected!");
       });
 
       setStatus("Connecting...");
       const server = await device.gatt.connect();
-
-      setStatus("Discovering services...");
       const services = await server.getPrimaryServices();
 
       let notifyChar = null;
+      let writeChar = null;
 
-      // Step 2: Find NOTIFY characteristic automatically
       for (const service of services) {
         const chars = await service.getCharacteristics();
-
         for (const ch of chars) {
-          if (ch.properties.notify) {
-            notifyChar = ch;
-            console.log("Notify Char Found:", ch.uuid);
-            break;
-          }
+          if (ch.properties.notify && !notifyChar) notifyChar = ch;
+          if (
+            (ch.properties.write || ch.properties.writeWithoutResponse) &&
+            !writeChar
+          )
+            writeChar = ch;
         }
-        if (notifyChar) break;
       }
 
-      if (!notifyChar) {
-        setStatus("No notify characteristic found");
+      if (!notifyChar || !writeChar) {
+        setStatus("Required characteristics not found");
         return;
       }
 
-      // Step 3: Subscribe to notifications
-      await notifyChar.startNotifications();
+      setTxChar(writeChar);
 
+      await notifyChar.startNotifications();
       notifyChar.addEventListener(
         "characteristicvaluechanged",
-        (event) => {
-          const value = new TextDecoder().decode(event.target.value);
-          console.log("BLE Data:", value);
-          setBleData(value);
+        (e) => {
+          const val = new TextDecoder().decode(e.target.value);
+          setRxData(val);
         }
       );
 
-      setStatus("Connected & Listening");
-
-    } catch (err) {
-      console.error(err);
-      setStatus("Error: " + err.message);
+      setStatus("✅ Connected");
+    } catch (e) {
+      console.error(e);
+      setStatus("Error: " + e.message);
     }
   };
 
-
- // 📤 Send ANY text
   const sendMessage = async () => {
-    if (!txChar || txMsg.length === 0) return;
+    if (!txChar || !txMsg) return;
 
     const data = new TextEncoder().encode(txMsg);
 
@@ -84,7 +93,6 @@ function App() {
       } else {
         await txChar.writeValue(data);
       }
-      console.log("TX:", txMsg);
       setTxMsg("");
     } catch (e) {
       console.error("Send error", e);
@@ -93,16 +101,11 @@ function App() {
 
   return (
     <div style={{ padding: 30, fontFamily: "Arial" }}>
-      <h2>WCH BLE Auto Connect</h2>
+      <h2>WCH BLE Monitor</h2>
 
-      <button onClick={connectBLE} style={{ padding: 10 }}>
-        Connect BLE
-      </button>
-
+      <button onClick={connectBLE}>Connect BLE</button>
       <p><b>Status:</b> {status}</p>
-      <p><b>Received:</b> {bleData}</p>
-      {/* <button onClick={() => sendData("LED:1")}>LED ON</button>
-      <button onClick={() => sendData("LED:0")}>LED OFF</button> */}
+
       <hr />
 
       <input
@@ -117,7 +120,9 @@ function App() {
       </button>
 
       <hr />
-      
+
+      <p><b>Received:</b></p>
+      <pre>{rxData}</pre>
     </div>
   );
 }
