@@ -3,6 +3,9 @@ import React, { useState } from "react";
 function App() {
   const [status, setStatus] = useState("Idle");
   const [bleData, setBleData] = useState("No Data");
+  const [txChar, setTxChar] = useState(null);
+  const [txMsg, setTxMsg] = useState("");
+
 
   const connectBLE = async () => {
     try {
@@ -68,6 +71,26 @@ function App() {
     }
   };
 
+
+ // 📤 Send ANY text
+  const sendMessage = async () => {
+    if (!txChar || txMsg.length === 0) return;
+
+    const data = new TextEncoder().encode(txMsg);
+
+    try {
+      if (txChar.properties.writeWithoutResponse) {
+        await txChar.writeValueWithoutResponse(data);
+      } else {
+        await txChar.writeValue(data);
+      }
+      console.log("TX:", txMsg);
+      setTxMsg("");
+    } catch (e) {
+      console.error("Send error", e);
+    }
+  };
+
   return (
     <div style={{ padding: 30, fontFamily: "Arial" }}>
       <h2>WCH BLE Auto Connect</h2>
@@ -78,6 +101,23 @@ function App() {
 
       <p><b>Status:</b> {status}</p>
       <p><b>Received:</b> {bleData}</p>
+      {/* <button onClick={() => sendData("LED:1")}>LED ON</button>
+      <button onClick={() => sendData("LED:0")}>LED OFF</button> */}
+      <hr />
+
+      <input
+        type="text"
+        value={txMsg}
+        onChange={(e) => setTxMsg(e.target.value)}
+        placeholder="Type any message"
+        style={{ width: "60%", padding: 8 }}
+      />
+      <button onClick={sendMessage} style={{ marginLeft: 10 }}>
+        Send
+      </button>
+
+      <hr />
+      
     </div>
   );
 }
