@@ -11,7 +11,14 @@ function App() {
       // Step 1: Scan (NO UUID filter)
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: [] // allow discovery
+         // Allow access to ALL vendor & custom services
+  optionalServices: [
+    "battery_service",
+    "device_information",
+    "generic_access",
+    "generic_attribute",
+    "0000fff0-0000-1000-8000-00805f9b34fb"
+  ]
       });
 
       setStatus("Connecting...");
